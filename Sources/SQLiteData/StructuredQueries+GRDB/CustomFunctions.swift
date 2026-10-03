@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 import GRDBSQLite
 public import StructuredQueriesSQLiteCore
@@ -156,13 +157,45 @@ private protocol AggregateDatabaseFunctionIteratorProtocol<Body> {
   associatedtype Body: AggregateDatabaseFunction
 
   var body: Body { get }
+  #if !os(WASI)
   var stream: Stream<Body.Element> { get }
+  #endif
   func start()
   func step(_ decoder: inout some QueryDecoder) throws
   func finish()
   var result: QueryBinding { get throws }
 }
 
+#if os(WASI)
+// A single-threaded WASI callback cannot block waiting for
+// queued aggregate work. Buffer decoded values and reduce during SQLite xFinal.
+// Native targets retain the original concurrent stream implementation below.
+private final class AggregateDatabaseFunctionIterator<
+  Body: AggregateDatabaseFunction
+>: AggregateDatabaseFunctionIteratorProtocol {
+  let body: Body
+  private var elements: [Body.Element] = []
+  private var binding: QueryBinding?
+  init(_ body: Body) { self.body = body }
+  func start() {
+    do { binding = try body.invoke(elements) }
+    catch { binding = .invalid(error) }
+  }
+  func step(_ decoder: inout some QueryDecoder) throws {
+    elements.append(try body.step(&decoder))
+  }
+  func finish() {
+    start()
+    elements.removeAll(keepingCapacity: false)
+  }
+  var result: QueryBinding {
+    get throws {
+      precondition(binding != nil, "Aggregate result requested before finalization")
+      return binding!
+    }
+  }
+}
+#else
 private final class AggregateDatabaseFunctionIterator<
   Body: AggregateDatabaseFunction
 >: AggregateDatabaseFunctionIteratorProtocol {
@@ -203,6 +236,8 @@ private final class AggregateDatabaseFunctionIterator<
     }
   }
 }
+
+#endif
 
 private final class Stream<Element>: Sequence {
   let condition = NSCondition()
