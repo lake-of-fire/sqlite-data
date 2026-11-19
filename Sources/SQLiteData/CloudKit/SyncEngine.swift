@@ -286,7 +286,9 @@
         tables: allTables,
         tablesByName: tablesByName
       )
-      #if os(iOS)
+      // App extensions cannot use UIApplication.shared. The containing app
+      // continues to own its background flush when this opt-in trait is absent.
+      #if os(iOS) && !SQLITE_DATA_APP_EXTENSION
         @Dependency(\.defaultNotificationCenter) var defaultNotificationCenter
         notificationsObserver.withValue {
           $0 = defaultNotificationCenter.addObserver(

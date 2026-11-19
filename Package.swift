@@ -23,6 +23,10 @@ let package = Package(
   ],
   traits: [
     .trait(
+      name: "AppExtensionSafe",
+      description: "Exclude containing-app lifecycle hooks when linking into an app extension."
+    ),
+    .trait(
       name: "CasePaths",
       description: "Introduce support for enum tables."
     ),
@@ -106,6 +110,9 @@ let package = Package(
           package: "swift-tagged",
           condition: .when(traits: ["Tagged"])
         ),
+      ],
+      swiftSettings: [
+        .define("SQLITE_DATA_APP_EXTENSION", .when(traits: ["AppExtensionSafe"]))
       ]
     ),
     .target(
